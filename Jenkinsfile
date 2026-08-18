@@ -17,19 +17,10 @@ pipeline {
             }
         }
 
-        stage('Health Check') {
-            steps {
-                echo 'Running health check'
-
-                sh '''
-                    chmod +x scripts/health-check.sh
-                    ./scripts/health-check.sh
-                '''
-            }
-        }
-
         stage('System Information') {
             steps {
+                echo 'Collecting system information'
+
                 sh '''
                     chmod +x scripts/system-info.sh
                     ./scripts/system-info.sh
@@ -62,11 +53,11 @@ pipeline {
                 echo 'Deploying ShareBox'
 
                 sh '''
-                    echo "Removing old container if it exists..."
+                    echo "Removing old container..."
 
                     docker rm -f ${CONTAINER_NAME} 2>/dev/null || true
 
-                    echo "Starting new ShareBox container..."
+                    echo "Starting ShareBox container..."
 
                     docker run -d \
                         --name ${CONTAINER_NAME} \
@@ -74,23 +65,57 @@ pipeline {
                         -v sharebox-data:/app/uploads \
                         ${APP_NAME}:${BUILD_NUMBER}
 
-                    echo "Deployment completed."
+                    echo "Deployment completed"
 
                     docker ps --filter "name=${CONTAINER_NAME}"
                 '''
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Health Check') {
             steps {
-                echo 'Checking deployed ShareBox application'
+                echo 'Running ShareBox health check'
 
                 sh '''
+                    echo "Waiting for ShareBox application..."
+
+                    for i in $(seq 1 10); do
+
+                        if curl -fs http://localhost:${APP_PORT}/health; then
+
+                            echo ""
+                            echo "ShareBox Health Check PASSED"
+                            exit 0
+
+                        fi
+
+                        echo "Application not ready. Attempt $i/10"
+
+                        sleep 2
+
+                    done
+
+                    echo "ShareBox Health Check FAILED"
+
                     echo "===== CONTAINER STATUS ====="
 
                     docker ps -a --filter "name=${CONTAINER_NAME}"
 
-                    echo "===== CONTAINER DETAILS ====="
+                    echo "===== CONTAINER LOGS ====="
+
+                    docker logs ${CONTAINER_NAME}
+
+                    exit 1
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo 'Verifying deployed ShareBox application'
+
+                sh '''
+                    echo "===== CONTAINER STATUS ====="
 
                     docker inspect ${CONTAINER_NAME} \
                         --format='Status={{.State.Status}} ExitCode={{.State.ExitCode}}'
@@ -101,50 +126,22 @@ pipeline {
 
                     echo "===== INTERNAL HEALTH CHECK ====="
 
-                    HEALTH_OK=false
+                    docker exec ${CONTAINER_NAME} \
+                        wget -qO- http://127.0.0.1:${APP_PORT}/health
 
-                    for i in $(seq 1 10); do
+                    echo ""
 
-                        if docker exec ${CONTAINER_NAME} \
-                            wget -qO- http://127.0.0.1:${APP_PORT}/health; then
-
-                            echo ""
-                            echo "Internal health check PASSED"
-
-                            HEALTH_OK=true
-                            break
-                        fi
-
-                        echo "Application not ready. Attempt $i/10"
-
-                        sleep 2
-                    done
-
-                    if [ "$HEALTH_OK" != "true" ]; then
-
-                        echo "ERROR: ShareBox internal health check failed"
-
-                        echo "===== FINAL CONTAINER LOGS ====="
-
-                        docker logs ${CONTAINER_NAME}
-
-                        exit 1
-                    fi
+                    echo "Internal health check PASSED"
 
                     echo "===== HOST HEALTH CHECK ====="
 
-                    if curl -fs http://localhost:${APP_PORT}/health; then
+                    curl -fs http://localhost:${APP_PORT}/health
 
-                        echo ""
-                        echo "Host health check PASSED"
+                    echo ""
 
-                    else
+                    echo "Host health check PASSED"
 
-                        echo ""
-                        echo "WARNING: Host health check failed"
-                        echo "Internal container health check passed."
-
-                    fi
+                    echo "ShareBox deployment verified successfully!"
                 '''
             }
         }
