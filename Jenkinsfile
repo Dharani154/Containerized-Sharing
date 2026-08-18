@@ -76,38 +76,56 @@ pipeline {
         }
 
         stage('Deploy') {
+    steps {
+        echo 'Deploying ShareBox'
 
-            steps {
+        sh '''
+            docker rm -f sharebox 2>/dev/null || true
 
-                echo 'Deploying ShareBox'
+            docker run -d \
+                --name sharebox \
+                -p 4040:4040 \
+                -v sharebox-data:/app/uploads \
+                sharebox-app:${BUILD_NUMBER}
 
-                sh '''
-                    docker rm -f ${CONTAINER_NAME} || true
-
-                    docker run -d \
-                      --name ${CONTAINER_NAME} \
-                      -p 4040:4040 \
-                      -v sharebox-data:/app/uploads \
-                      ${IMAGE_NAME}:${BUILD_NUMBER}
-                '''
-
-            }
-        }
+            echo "Container started:"
+            docker ps --filter "name=sharebox"
+        '''
+    }
+}
 
         stage('Verify Deployment') {
+    steps {
+        echo 'Checking deployed application'
 
-            steps {
+        sh '''
+            echo "Container status:"
+            docker ps -a --filter "name=sharebox"
 
-                echo 'Checking deployed application'
+            echo "Container logs:"
+            docker logs sharebox || true
 
-                sh '''
-                    sleep 5
+            echo "Waiting for application..."
 
-                    curl -f http://localhost:4040/health
-                '''
+            for i in $(seq 1 12); do
+                if curl -fs http://localhost:4040/health; then
+                    echo ""
+                    echo "ShareBox deployment verified successfully!"
+                    exit 0
+                fi
 
-            }
-        }
+                echo "Application not ready yet. Attempt $i/12"
+                sleep 2
+            done
+
+            echo "Application failed to start."
+            docker ps -a --filter "name=sharebox"
+            docker logs sharebox
+
+            exit 1
+        '''
+    }
+}
 
     }
 

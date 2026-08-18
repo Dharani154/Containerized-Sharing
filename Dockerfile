@@ -12,4 +12,4 @@ RUN mkdir -p uploads
 
 EXPOSE 4040
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
