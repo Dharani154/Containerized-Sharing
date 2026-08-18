@@ -1,0 +1,41 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    width: 80%;
+    max-width: 900px;
+    margin: 50px auto;
+    text-align: center;
+}
+
+h1 {
+    font-size: 40px;
+}
+
+.upload-box,
+.files-box {
+    background: white;
+    padding: 30px;
+    margin-top: 25px;
+    border-radius: 10px;
+}
+
+input {
+    margin: 20px;
+}
+
+button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+li {
+    list-style: none;
+    margin: 15px;
+}
