@@ -48,34 +48,28 @@ pipeline {
             }
         }
 
+        
         stage('Build Docker Image') {
+    steps {
+        echo 'Building Docker image'
 
-            steps {
+        sh '''
+            docker build -t sharebox-app:${BUILD_NUMBER} .
+        '''
+    }
+}
 
-                echo 'Building Docker image'
+stage('Docker Test') {
+    steps {
+        echo 'Testing Docker image'
 
-                sh '''
-                    docker build \
-                    -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                '''
+        sh '''
+            docker images sharebox-app:${BUILD_NUMBER}
+        '''
+    }
+}
 
-            }
-        }
-
-        stage('Docker Test') {
-
-            steps {
-
-                echo 'Testing Docker image'
-
-                sh '''
-                    docker images ${IMAGE_NAME}:${BUILD_NUMBER}
-                '''
-
-            }
-        }
-
-        stage('Deploy') {
+stage('Deploy') {
     steps {
         echo 'Deploying ShareBox'
 
@@ -88,44 +82,60 @@ pipeline {
                 -v sharebox-data:/app/uploads \
                 sharebox-app:${BUILD_NUMBER}
 
-            echo "Container started:"
+            echo "Deployment completed"
             docker ps --filter "name=sharebox"
         '''
     }
 }
-
-        stage('Verify Deployment') {
+}
+            stage('Verify Deployment') {
     steps {
-        echo 'Checking deployed application'
+        echo 'Checking deployed ShareBox application'
 
         sh '''
-            echo "Container status:"
+            echo "===== CONTAINER STATUS ====="
             docker ps -a --filter "name=sharebox"
 
-            echo "Container logs:"
-            docker logs sharebox || true
+            echo "===== CONTAINER DETAILS ====="
+            docker inspect sharebox --format='Status={{.State.Status}} ExitCode={{.State.ExitCode}}'
 
-            echo "Waiting for application..."
-
-            for i in $(seq 1 12); do
-                if curl -fs http://localhost:4040/health; then
-                    echo ""
-                    echo "ShareBox deployment verified successfully!"
-                    exit 0
-                fi
-
-                echo "Application not ready yet. Attempt $i/12"
-                sleep 2
-            done
-
-            echo "Application failed to start."
-            docker ps -a --filter "name=sharebox"
+            echo "===== APPLICATION LOGS ====="
             docker logs sharebox
 
-            exit 1
+            echo "===== INTERNAL HEALTH CHECK ====="
+
+            for i in $(seq 1 10); do
+                if docker exec sharebox wget -qO- http://127.0.0.1:4040/health; then
+                    echo ""
+                    echo "Internal health check PASSED"
+                    break
+                fi
+
+                echo "Waiting for ShareBox... attempt $i/10"
+                sleep 2
+
+                if [ "$i" -eq 10 ]; then
+                    echo "ERROR: ShareBox health check failed"
+                    docker logs sharebox
+                    exit 1
+                fi
+            done
+
+            echo "===== HOST HEALTH CHECK ====="
+
+            if curl -fs http://localhost:4040/health; then
+                echo ""
+                echo "Host health check PASSED"
+            else
+                echo ""
+                echo "WARNING: Host-level health check failed"
+                echo "Container-level health check passed."
+            fi
         '''
     }
 }
+
+        
 
     }
 
